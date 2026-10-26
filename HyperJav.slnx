@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HyperJav.App/HyperJav.App.csproj" />
+    <Project Path="src/HyperJav.Core/HyperJav.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HyperJav.Core.Tests/HyperJav.Core.Tests.csproj" />
+  </Folder>
+</Solution>

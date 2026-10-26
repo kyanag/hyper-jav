@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要创建的发布标签，例如 v1.0.0；留空则只生成构建产物"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  publish:
+    name: 发布 win-x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: 解析版本号
+        id: version
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          $tag = if ($env:EVENT_NAME -eq 'push') { $env:REF_NAME } else { $env:INPUT_TAG }
+          $tag = "$tag".Trim()
+
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $version = '1.0.0'
+            $artifactSuffix = 'dev-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+          } else {
+            $version = $tag -replace '^[vV]', ''
+            if ($version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') {
+              $version = '1.0.0'
+            }
+            $artifactSuffix = $version
+          }
+
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "selfContained=HyperJav-$artifactSuffix-win-x64-self-contained.zip" >> $env:GITHUB_OUTPUT
+          "frameworkDependent=HyperJav-$artifactSuffix-win-x64-framework-dependent.zip" >> $env:GITHUB_OUTPUT
+
+      - name: 还原依赖
+        run: dotnet restore HyperJav.slnx
+
+      - name: 构建
+        run: dotnet build HyperJav.slnx -c Release --no-restore
+
+      - name: 测试
+        run: >
+          dotnet test tests/HyperJav.Core.Tests/HyperJav.Core.Tests.csproj
+          -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+
+      - name: 发布（自包含，带运行时）
+        run: >
+          dotnet publish src/HyperJav.App/HyperJav.App.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:DebugType=None -p:DebugSymbols=false
+          -o publish/self-contained
+
+      - name: 发布（框架依赖，不带运行时）
+        run: >
+          dotnet publish src/HyperJav.App/HyperJav.App.csproj
+          -c Release -r win-x64 --self-contained false
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:DebugType=None -p:DebugSymbols=false
+          -o publish/framework-dependent
+
+      - name: 打包
+        shell: pwsh
+        run: |
+          $packages = @(
+            @{ Dir = 'publish/self-contained'; Zip = '${{ steps.version.outputs.selfContained }}' },
+            @{ Dir = 'publish/framework-dependent'; Zip = '${{ steps.version.outputs.frameworkDependent }}' }
+          )
+
+          foreach ($package in $packages) {
+            # SkiaSharp 的 native pdb 有 90MB+，发布包不需要符号文件。
+            Get-ChildItem -Path $package.Dir -Filter '*.pdb' -Recurse -File | Remove-Item -Force
+
+            if (!(Test-Path (Join-Path $package.Dir 'HyperJav.App.exe'))) {
+              throw "$($package.Dir) 缺少 HyperJav.App.exe"
+            }
+            foreach ($asset in @('data/feature-dictionary.json', 'data/suren-prefixes.json')) {
+              if (!(Test-Path (Join-Path $package.Dir $asset))) {
+                throw "$($package.Dir) 缺少运行资产 $asset"
+              }
+            }
+            Compress-Archive -Path (Join-Path $package.Dir '*') -DestinationPath $package.Zip -Force
+          }
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: HyperJav-win-x64
+          path: |
+            ${{ steps.version.outputs.selfContained }}
+            ${{ steps.version.outputs.frameworkDependent }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 上传测试结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: 创建 GitHub Release
+        if: steps.version.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          files: |
+            ${{ steps.version.outputs.selfContained }}
+            ${{ steps.version.outputs.frameworkDependent }}
+          fail_on_unmatched_files: true
+          body: |
+            ## 下载说明
+
+            - `*-win-x64-self-contained.zip`：自带 .NET 运行时，解压即可运行，体积较大。
+            - `*-win-x64-framework-dependent.zip`：体积较小，需要先安装 [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)。
+
+            两个包都已包含 `整理规则.ini` 和 `data/` 运行资产。

@@ -1,0 +1,31 @@
+# ---- .NET 构建与测试产物 ----
+**/bin/
+**/obj/
+**/TestResults/
+*.trx
+coverage*.xml
+*.coverage
+*.coveragexml
+
+# ---- IDE / 编辑器 ----
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# ---- 操作系统 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+/.docs/
+
+# 刮削缓存、流水、报表、整理清单等运行期产物。
+*.db
+*.db-shm
+*.db-wal
+*.log

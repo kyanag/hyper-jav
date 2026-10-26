@@ -1,0 +1,55 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- 运行期数据资产目录：默认仓库根的 data；打包机可用 -p:HyperJavDataDir=... 覆盖。 -->
+    <HyperJavDataDir Condition="'$(HyperJavDataDir)' == ''">$(MSBuildThisFileDirectory)..\..\data</HyperJavDataDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HyperJav.Core\HyperJav.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 配置 ini 跟随构建复制到 exe 目录（bin）；改这份源文件再 build 即生效。 -->
+    <None Include="整理规则.ini" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- data 为本地资产目录；仅在文件存在时把运行期资产复制到输出/发布目录的 data/。 -->
+    <None Include="$(HyperJavDataDir)\feature-dictionary.json"
+          Condition="Exists('$(HyperJavDataDir)\feature-dictionary.json')"
+          Link="data\feature-dictionary.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(HyperJavDataDir)\suren-prefixes.json"
+          Condition="Exists('$(HyperJavDataDir)\suren-prefixes.json')"
+          Link="data\suren-prefixes.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(HyperJavDataDir)\feature-dictionary.custom.json"
+          Condition="Exists('$(HyperJavDataDir)\feature-dictionary.custom.json')"
+          Link="data\feature-dictionary.custom.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(HyperJavDataDir)\translations.json"
+          Condition="Exists('$(HyperJavDataDir)\translations.json')"
+          Link="data\translations.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- 发布包必须带运行资产；build 允许缺失（本地开发降级运行），publish 直接报错。 -->
+  <Target Name="ValidateHyperJavDataAssets" BeforeTargets="Publish"
+          Condition="!Exists('$(HyperJavDataDir)\feature-dictionary.json') Or !Exists('$(HyperJavDataDir)\suren-prefixes.json')">
+    <Error Text="发布缺少运行资产：请把 feature-dictionary.json、suren-prefixes.json 放入 $(HyperJavDataDir)，或用 -p:HyperJavDataDir=&lt;目录&gt; 指定。" />
+  </Target>
+
+</Project>
