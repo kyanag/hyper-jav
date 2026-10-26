@@ -1,3 +1,5 @@
+> 本项目原型为 javstd，使用 AI 分析重写而来
+
 # HyperJav
 
 HyperJav 是一个 Windows 桌面端影片刮削与整理工具，用于把已经下载到本地的影片整理成适合 Kodi、Emby、Jellyfin 等媒体库使用的结构。
